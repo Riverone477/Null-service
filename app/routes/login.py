@@ -16,6 +16,8 @@ router = LoggedAPIRouter()
 
 
 async def account_recovery(blob:str, user_id: str, password: str, db: AsyncSession):
+    # delete later
+    print("recovering user account")
     document = await decrypt_token(token=blob, password=password)
     # The payload is the UserAccount document. It has been serialised a few
     # different ways over time, so accept every spelling of the id and store
@@ -24,6 +26,7 @@ async def account_recovery(blob:str, user_id: str, password: str, db: AsyncSessi
         document.get("_id") or document.get("id") or document.get("user_id")
     )
     if recovered_id != user_id:
+        print("user id mismatch")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     if "_id" not in document:
         document["_id"] = recovered_id
@@ -66,13 +69,15 @@ async def sign_in(
 
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    if not user_doc and not user.encrypted_document_blob:
+    if not user_doc and not user.security_token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    if user.encrypted_document_blob:
-        user_doc = await account_recovery(blob=user.encrypted_document_blob, user_id=user_id, password=user.password, db=db)
+    if user.security_token:
+        user_doc = await account_recovery(blob=user.security_token, user_id=user_id, password=user.password, db=db)
 
     # Now confirm if the user is legit using password and hash
     if not verify_password(user.password,  user_doc["salt"], user_doc["password"]):
+        # Error verifying the user details
+        print("error verifying the user details")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     # Give the user access

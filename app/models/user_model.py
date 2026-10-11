@@ -181,10 +181,9 @@ class SignIn(BaseModel):
     phone_number: Optional[str] = Field(None, min_length=10, max_length=15, description="The phone number of the user")
     password: str = Field(..., min_length=8, max_length=20)
     user_id: Optional[str] = Field(None, min_length=32, max_length=36, description="The user id of the user")
-    encrypted_document_blob: Optional[str]  = Field(None, max_length=10000, description ="This is not the password. This is for when the user is not known by the server. But thier blob exist. Lets say the server gets wiped this is recovery")
+    security_token: Optional[str]  = Field(None, max_length=10000, description ="This is not the password. This is for when the user is not known by the server. But thier blob exist. Lets say the server gets wiped this is recovery")
     salt_version: Optional[int] = Field(None, description="The version of the salt. This is used to verify the password")
-
-
+   
 class RecreateData(BaseModel):
     password: str = Field(min_length=8, max_length=20)
 

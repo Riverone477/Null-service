@@ -386,9 +386,9 @@ async def create_encrypted_token(password: str, details: dict) -> dict[str, Any]
 
 
 async def decrypt_token(token: str, password: str) -> dict:
-    try:
+    # try:
         if len(password) > 20:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be max 15 characters")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password must be max 20 characters")
 
         parts = token.split(":", 2)
         if len(parts) != 3:
@@ -403,8 +403,9 @@ async def decrypt_token(token: str, password: str) -> dict:
         payload = json.loads(jwe_obj.payload.decode("utf-8"))
         return {**payload}
 
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    # except Exception:
+    #     print("Invalid token")
+    #     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
 
 

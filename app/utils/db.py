@@ -1,7 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import event
+from sqlalchemy import event, inspect
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -72,3 +72,29 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_migrate_servers_table)
+
+
+def _migrate_servers_table(connection) -> None:
+    """Add columns introduced after the initial SQLite schema was created."""
+    inspector = inspect(connection)
+    if "servers" not in inspector.get_table_names():
+        return
+
+    existing = {column["name"] for column in inspector.get_columns("servers")}
+    missing_columns = {
+        "media": "JSON",
+        "colour": "VARCHAR",
+        "about": "TEXT",
+        "categories": "JSON",
+        "annotated": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "disabled": "BOOLEAN NOT NULL DEFAULT FALSE",
+        "location": "VARCHAR",
+    }
+    preparer = connection.dialect.identifier_preparer
+    for name, definition in missing_columns.items():
+        if name not in existing:
+            connection.exec_driver_sql(
+                f"ALTER TABLE {preparer.quote('servers')} "
+                f"ADD COLUMN {preparer.quote(name)} {definition}"
+            )

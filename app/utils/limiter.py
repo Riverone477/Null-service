@@ -321,5 +321,3 @@ async def is_allowed(redis,phone_number: str, ip_address: str) -> tuple[bool, st
 
         return True, "Allowed"
 
-
-
