@@ -301,7 +301,7 @@ class DHDrop(BaseModel):
     recipient_id: str = Field(..., description="The recipient's user id", max_length=40)
     dh_enc_key: str = Field(..., description="The recipient's public dh key, encrypted with the sender's public dh key", max_length=1000)
     dh_enc_nonce: str = Field(..., description="The nonce used to encrypt the dh key", max_length=40)
-    expires_in: int = Field(
+    expires_in: int = Field(...,
         DH_DROP_EXPIRY_SECONDS,
         ge=MIN_EXPIRY_SECONDS,
         le=MAX_EXPIRY_SECONDS,

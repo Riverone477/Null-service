@@ -85,7 +85,7 @@ class DhDropORM(Base):
 
 
 def _expiry(expires_in: int) -> int:
-    return int(time.time()) + int(expires_in)
+    return int(time.time() + int(expires_in))
 
 
 async def save_contact_drop(

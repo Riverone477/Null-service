@@ -118,6 +118,19 @@ async def verify_otp(redis: Redis, key: str, supplied: str) -> None:
 # List servers
 # ============================================================
 
+# delete later
+import json
+
+file = "C:/Users/DELL/Desktop/Null/Null-service/servers_temp.json"
+
+def temp_servers_json():
+    with open(file, 'r', encoding="utf-8") as f:
+        data = json.load(f)
+        return [data]
+
+    
+
+
 class ServerList(BaseModel):
     servers: List[Server]
 
@@ -129,12 +142,13 @@ async def get_servers(
 ):
     # `Server` is the output model, so owner fields (phone/email hashes etc.) are dropped automatically.
     servers = []
-    for record in await list_servers(db):
-        try:
-            servers.append(Server(**record))
-        except ValidationError:
-            continue  # skip malformed records instead of failing the whole list
-    return {"servers": servers}
+    return {"servers": temp_servers_json()}
+    # for record in await list_servers(db):
+    #     try:
+    #         servers.append(Server(**record))
+    #     except ValidationError:
+    #         continue  # skip malformed records instead of failing the whole list
+    # return {"servers": servers}
 
 
 # ============================================================
