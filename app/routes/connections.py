@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.utils.auth import require_jwe_auth
 from app.utils.config import settings
 from app.utils._redis import get_redis_client
+from app.models.updates import sub_cat
 from app.utils.db import get_db
 from app.utils.logger import LoggedAPIRouterMixin
 from app.models.connections import (
@@ -375,3 +376,11 @@ async def check_dh_drops(
 
     dh_drops = await pop_dh_drops(db, recipient_id)
     return {"dh_drops": dh_drops}
+
+
+@router.get("/sub-categories")
+async def get_sub_categories(
+    user: dict = Depends(require_jwe_auth),
+):
+    
+    return sub_cat
