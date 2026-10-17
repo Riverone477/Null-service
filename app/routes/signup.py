@@ -14,6 +14,7 @@ from app.utils.auth import create_passport, require_jwe_auth, create_encrypted_t
 from pydantic import BaseModel, Field
 from app.utils.mails_n_sms import send_otp_sms
 from app.utils.limiter import exponential_backoff
+from app.utils.jti import issue_login_jti
 from app.utils.logger import LoggedAPIRouterMixin
 import time
 
@@ -123,12 +124,17 @@ async def create_new_user_postprocess(
     # NOTE: the JWE is keyed with the PLAINTEXT password, because the client is the one
     # that has to decrypt it (see account_recovery) and it only ever knows the password.
     security_token_doc = await create_encrypted_token(password=user.password, details=account.model_dump())
-    
+
+    # Issue the device's first single-use login JTI. It is an admission
+    # identifier, never a substitute for the password on later sign-ins.
+    login_jti = await issue_login_jti(redis, user_id=user_id, phone_number=phone_number)
+
     # Sign the user_passport (inside build_user_details)
     return_doc = {
         **build_user_details(user_id, user_doc),
         **security_token_doc,
-        "passport": create_passport(user_id, user.public_key)
+        "passport": create_passport(user_id, user.public_key),
+        "login_jti": login_jti,
     }
     return return_doc
 

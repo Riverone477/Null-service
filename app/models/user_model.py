@@ -183,6 +183,9 @@ class SignIn(BaseModel):
     user_id: Optional[str] = Field(None, min_length=32, max_length=36, description="The user id of the user")
     security_token: Optional[str]  = Field(None, max_length=10000, description ="This is not the password. This is for when the user is not known by the server. But thier blob exist. Lets say the server gets wiped this is recovery")
     salt_version: Optional[int] = Field(None, description="The version of the salt. This is used to verify the password")
+    jti: Optional[str] = Field(None, max_length=100, description="Single-use device JTI for returning devices (Flow 1)")
+    queue_ticket_id: Optional[str] = Field(None, max_length=100, description="Ticket id obtained when bcrypt capacity was exhausted (Flow 2)")
+    permit_id: Optional[str] = Field(None, max_length=100, description="Short-lived single-use verification permit claimed before bcrypt (Flow 2)")
    
 class RecreateData(BaseModel):
     password: str = Field(min_length=8, max_length=20)
@@ -208,3 +211,4 @@ class ReturnUserCreate(BaseModel):
     schema_version: int
     recovery_type: RecoveryPolicy
     passport: str
+    login_jti: Optional[str] = None
