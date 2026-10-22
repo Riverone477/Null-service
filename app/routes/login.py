@@ -228,9 +228,8 @@ async def sign_in(
         session = await issue_session(user_id, access_expires_minutes=24*60,
                                       refresh_expires_minutes=24*60*7)
 
-        new_jti = None
-        if user.jti:
-            new_jti = await issue_login_jti(
+        
+        new_jti = await issue_login_jti(
                 redis,
                 user_id=user_id,
                 phone_number=user_phone or "",
