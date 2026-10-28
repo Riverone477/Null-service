@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional
 import re
 import time
@@ -13,11 +13,11 @@ class Recovery(str, Enum):
 
 
 class UserStart(BaseModel):
-    phone: str = Field(..., max_length=16, re=r'^\d{11}$')
+    phone: str = Field(..., max_length=16, pattern=r'^\d{11}$')
 
 class UserRegister(BaseModel):
-    otp: str = Field(..., min_length=6, max_length=6, re=r'^\d{6}$')
-    phone: str = Field(..., max_length=16, re=r'^\d{11}$')
+    otp: str = Field(..., min_length=6, max_length=6, pattern=r'^\d{6}$')
+    phone: str = Field(..., max_length=16, pattern=r'^\d{11}$')
     password: str = Field(..., max_length=40)
     encrypted_blob: Optional[str] = Field(..., max_length=10000)
 
@@ -160,8 +160,8 @@ class UserAccount(BaseModel):
     settings_blob: Optional[str]
     encrypted_blob: Optional[str] = Field(max_length=10000) # Encrypted blob of password so that the user can sign in when they forget their password. This is a one-time encrypted blob that is created when the user signs up. It is used to create a new password for the user when they forget their password. The encrypted blob is created using the user's password and a salt. The salt version is stored in the database so that we can use the correct salt version when decrypting the blob. The encrypted blob is deleted after it is used to create a new password for the user. This is to ensure that the user cannot use the same encrypted blob to create multiple passwords. The encrypted blob is also deleted after 24 hours to ensure that it cannot be used after that time period.
     schema_version: int = Field(default=1, description="Version of the schema")
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "_id": "user_1234567890abcdef",
                 "phone_number": "+1234567890",
@@ -174,7 +174,8 @@ class UserAccount(BaseModel):
                 "encrypted_blob": None,
                 "schema_version": 1
             }
-        }
+        },
+    )
 
 
 class SignIn(BaseModel):

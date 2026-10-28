@@ -3,7 +3,7 @@ import time
 from enum import Enum
 from typing import List, Optional, Tuple
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import (
     JSON,
     Boolean,
@@ -52,9 +52,9 @@ class Server(BaseModel):
 
 
 
-    class Config:
-        orm_mode = True
-        schema_extra = {
+    model_config = ConfigDict(
+        from_attributes=True,
+        json_schema_extra={
             "example": {
                 "serverId": "1234567890",
                 "serverName": "Test Server",
@@ -72,7 +72,8 @@ class Server(BaseModel):
                 "serverType": ServerType.PRIVATE
 
             }
-        }
+        },
+    )
     
 
 class ServerIn(BaseModel):

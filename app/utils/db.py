@@ -1,8 +1,7 @@
 import os
 
 from dotenv import load_dotenv
-from sqlalchemy import inspect
-from sqlalchemy.engine.url import make_url
+from sqlalchemy.engine.url import URL, make_url
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -17,14 +16,14 @@ if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL must be set to a PostgreSQL connection URL")
 
 
-def _postgres_async_url(url: str) -> str:
+def _postgres_async_url(url: str) -> URL:
     if url.startswith("postgres://"):
         url = "postgresql://" + url[len("postgres://"):]
 
     parsed_url = make_url(url)
     if parsed_url.drivername not in ("postgresql", "postgresql+asyncpg"):
         raise ValueError("DATABASE_URL must use PostgreSQL with the asyncpg driver")
-    return str(parsed_url.set(drivername="postgresql+asyncpg"))
+    return parsed_url.set(drivername="postgresql+asyncpg")
 
 
 engine = create_async_engine(
@@ -57,4 +56,3 @@ async def init_db() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         
-
