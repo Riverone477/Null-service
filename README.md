@@ -3,14 +3,14 @@
 Backend API for the Null app: accounts, contacts, DH key exchange and a
 federated server registry.
 
-FastAPI + async SQLAlchemy. Durable data lives in SQL (SQLite by default,
-PostgreSQL for production); short-lived data stays in Redis.
+FastAPI + async SQLAlchemy. Durable data lives in PostgreSQL; short-lived data
+stays in Redis.
 
 ## Stack
 
 - **FastAPI** (Starlette) with custom logging, rate-limit, JSON-enforcement and
   body-size middleware.
-- **SQLAlchemy 2.0 async** via `aiosqlite` (default) or `asyncpg` (Postgres).
+- **SQLAlchemy 2.0 async** via `asyncpg` with PostgreSQL.
 - **Redis** for OTPs, refresh-token sessions, rate limits/backoff and shareable
   contact links.
 - **Pydantic v2** request/response models.
@@ -26,7 +26,7 @@ venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 
 # 2. Configuration (see table below). Create a .env with at least
-#    REDIS_URL and a stable SALT.
+#    DATABASE_URL, REDIS_URL and a stable SALT.
 
 # 3. Run
 uvicorn app.main:app --reload
@@ -45,7 +45,7 @@ All configuration is read from the environment (`.env` is loaded automatically).
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `DATABASE_URL` | `sqlite+aiosqlite:///./app.db` | SQL connection. Plain `sqlite://` and `postgresql://`/`postgres://` URLs are normalised onto the async driver automatically. |
+| `DATABASE_URL` | Required | PostgreSQL connection URL. `postgresql://` and `postgres://` URLs are normalized to the `asyncpg` driver; SQLite and other database backends are rejected. |
 | `REDIS_URL` | `redis://localhost:6379` | Ephemeral store. |
 | `REDIS_MAX_CONNECTIONS` | `20` | Redis pool size. |
 | `SERVER_PRIVATE_KEY` / `SERVER_PUBLIC_KEY` | PEM files in repo root | Base64-encoded Ed25519 PEM. Falls back to `server_private_key.pem` / `server_public_key.pem`. |
@@ -57,15 +57,14 @@ All configuration is read from the environment (`.env` is loaded automatically).
 
 ### Using PostgreSQL
 
-Set `DATABASE_URL` to a normal URL:
+Set `DATABASE_URL` to a PostgreSQL URL:
 
 ```
 DATABASE_URL=postgresql://user:password@localhost:5432/nulldb
 ```
 
-The driver suffix is added for you (`postgresql+asyncpg://...`). Foreign keys
-and `ON DELETE CASCADE` are enforced natively by Postgres; for SQLite the engine
-enables `PRAGMA foreign_keys=ON` on every connection so behaviour matches.
+The async driver suffix is added for you (`postgresql+asyncpg://...`). PostgreSQL
+enforces foreign keys and `ON DELETE CASCADE` natively.
 
 ## Storage model
 

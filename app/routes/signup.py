@@ -112,7 +112,6 @@ async def create_new_user_postprocess(
     )
     user_doc = account.model_dump(mode="json", by_alias=True)
 
-    # Persist the user to the database (SQLite by default, Postgres via DATABASE_URL)
     await save_user(db, user_doc)
 
     # OTP is ephemeral - it lives in Redis with a TTL
@@ -137,4 +136,3 @@ async def create_new_user_postprocess(
         "login_jti": login_jti,
     }
     return return_doc
-
