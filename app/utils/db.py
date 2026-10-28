@@ -17,10 +17,24 @@ if not DATABASE_URL:
 
 
 def _postgres_async_url(url: str) -> URL:
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+    normalized = url.strip()
+    if not normalized:
+        raise ValueError("DATABASE_URL must not be empty")
 
-    parsed_url = make_url(url)
+    lowered = normalized.lower()
+    if lowered.startswith("postgres://"):
+        normalized = "postgresql://" + normalized.split("://", 1)[1]
+    elif lowered.startswith("postgresql+asyncpg://"):
+        pass
+    elif lowered.startswith("postgresql://"):
+        pass
+    else:
+        parsed_url = make_url(normalized)
+        if parsed_url.drivername not in ("postgresql", "postgresql+asyncpg"):
+            raise ValueError("DATABASE_URL must use PostgreSQL with the asyncpg driver")
+        return parsed_url.set(drivername="postgresql+asyncpg")
+
+    parsed_url = make_url(normalized)
     if parsed_url.drivername not in ("postgresql", "postgresql+asyncpg"):
         raise ValueError("DATABASE_URL must use PostgreSQL with the asyncpg driver")
     return parsed_url.set(drivername="postgresql+asyncpg")
