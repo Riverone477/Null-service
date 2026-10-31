@@ -55,7 +55,8 @@ async def create_new_user_preprocess(
     # Set the pin in Redis for 10 minutes
     await redis.set(f"otp_{phone_number}", pin, ex=600)  # 600 seconds = 10 minutes
 
-  
+    # remove this later
+    print(f"Pin for {phone_number}: {pin}")
     return {    
         "phone_number": phone_number,
         "otp_sent": True,
