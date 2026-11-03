@@ -141,6 +141,7 @@ async def get_servers(
             continue  # skip malformed records instead of failing the whole list
     return {"servers": servers}
 
+
 @router.get("/servers-open")
 async def get_servers_open(
     db: AsyncSession = Depends(get_db),
@@ -190,7 +191,7 @@ async def register_server_pre(
     await redis.set(f"otp_server:{phone}", otp, ex=OTP_TTL)
     await redis.delete(f"otp_server:{phone}:attempts")
     await send_otp_email(server_owner.email, otp, "server registration")
-
+    print(f"[DEV] OTP for server registration -> {server_owner.email}: {otp}")
     return {"message": "OTP sent to your email"}
 
 
@@ -299,7 +300,7 @@ async def request_media_url_otp(
     await redis.set(key, otp, ex=OTP_TTL)
     await redis.delete(f"{key}:attempts")
     await send_otp_email(body.email, otp, "media URL update")
-
+    print(f"[DEV] OTP for media URL update -> {body.email}: {otp}")
     return {"message": "OTP sent to your email"}
 
 
