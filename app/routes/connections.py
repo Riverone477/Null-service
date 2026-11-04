@@ -224,10 +224,10 @@ async def send_contact_rebound(
     """In this route the user instantly creates this upon recieving to shares his own contact information to the other user """
     user_id = user["sub"]
     contact_data = {
-                **payload.contact.model_dump(),
-                "contact_id": user_id
-            }
-        
+        **payload.model_dump(exclude={"contact_key"}),
+        "contact_id": user_id,
+    }
+
     pipe = redis.pipeline()
     pipe.set(_data_key(payload.contact_key), json.dumps(contact_data), ex=60)
     pipe.set(_one_time_key(payload.contact_key), "1", ex=60)

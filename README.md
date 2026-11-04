@@ -142,8 +142,8 @@ All routes are mounted under `/api`. Most require a Bearer access token
 | GET | `/api/servers` | List public server records. |
 | POST | `/api/register-server-pre` | Send a registration OTP. |
 | POST | `/api/register-server-post` | Verify OTP and register (creates server + owner). |
-| POST | `/api/servers/{server_id}/media-url/otp` | Send an OTP to the owner's email. |
-| POST | `/api/servers/{server_id}/media-url` | Update media URL / server URL / owner email. |
+| POST | `/api/servers/{server_id}/media-url/otp` | Send an OTP to the owner's email and return public server details (no owner email or phone). |
+| POST | `/api/servers/{server_id}/media-url` | Update media URL, server URL, owner email, or server metadata (`serverName`, `about`, `categories`, `maxPayload`, `colour`, `annotated`, `disabled`, `location`, `serverType`). |
 | POST | `/api/add-servers` | Add server ids to the caller's membership list. |
 | POST | `/api/exchange-servers` | Read another user's membership list. |
 

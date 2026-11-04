@@ -4,7 +4,7 @@ import json
 import secrets, nanoid, hmac, hashlib, colorsys
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, EmailStr, Field, ValidationError
+from pydantic import BaseModel, EmailStr, Field, ValidationError, model_validator
 from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -18,6 +18,7 @@ from app.utils.logger import LoggedAPIRouterMixin
 from app.models.server import (
     Server,
     ServerIn,
+    ServerType,
     list_servers,
     create_server,
     save_server,
@@ -27,6 +28,7 @@ from app.models.server import (
     add_user_servers,
     list_user_servers,
 )
+from app.models.updates import Categories
 from app.routes.connections import ServerClass
 
 class LoggedAPIRouter(LoggedAPIRouterMixin, APIRouter):
@@ -265,12 +267,45 @@ class MediaUrlOtpRequest(BaseModel):
     email: EmailStr
 
 
+class MediaUrlOtpResponse(BaseModel):
+    message: str
+    server: Server
+
+
 class MediaUrlUpdate(BaseModel):
     email: EmailStr
     new_email: Optional[EmailStr] = None
     otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
     media_url: Optional[str] = Field(None, max_length=150, pattern=r"^https?://\S+$")
     server_url: Optional[str] = Field(None, max_length=150)
+    serverName: Optional[str] = Field(None, max_length=100)
+    about: Optional[str] = Field(None, max_length=500)
+    categories: Optional[List[Categories]] = None
+    maxPayload: Optional[int] = Field(None, le=100000)
+    colour: Optional[str] = None
+    annotated: Optional[bool] = None
+    disabled: Optional[bool] = None
+    location: Optional[str] = Field(None, max_length=150)
+    serverType: Optional[ServerType] = None
+
+    @model_validator(mode="after")
+    def reject_nulls_for_non_nullable_settings(self):
+        nullable_settings = {"categories", "location"}
+        settings = {
+            "serverName",
+            "about",
+            "categories",
+            "maxPayload",
+            "colour",
+            "annotated",
+            "disabled",
+            "location",
+            "serverType",
+        }
+        for field in settings - nullable_settings:
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
 
 
 async def _get_owned_server(db: AsyncSession, server_id: str, email: str) -> tuple[dict, dict]:
@@ -281,7 +316,10 @@ async def _get_owned_server(db: AsyncSession, server_id: str, email: str) -> tup
     return owned
 
 
-@router.post("/servers/{server_id}/media-url/otp")
+@router.post(
+    "/servers/{server_id}/media-url/otp",
+    response_model=MediaUrlOtpResponse,
+)
 async def request_media_url_otp(
     server_id: str,
     body: MediaUrlOtpRequest,
@@ -293,7 +331,7 @@ async def request_media_url_otp(
     if not await is_allowed(redis, server_id, ip):
         raise HTTPException(status_code=403, detail="Not allowed")
 
-    await _get_owned_server(db, server_id, body.email)
+    server, _ = await _get_owned_server(db, server_id, body.email)
 
     otp = generate_otp()
     key = f"otp_media:{server_id}"
@@ -301,15 +339,15 @@ async def request_media_url_otp(
     await redis.delete(f"{key}:attempts")
     await send_otp_email(body.email, otp, "media URL update")
     print(f"[DEV] OTP for media URL update -> {body.email}: {otp}")
-    return {"message": "OTP sent to your email"}
+    return {"message": "OTP sent to your email", "server": server}
 
 
 # ============================================================
 # Update media URL: step 2 (verify OTP + change)
 # ============================================================
 
-@router.post("/servers/{server_id}/media-url")
-async def update_media_url(
+@router.post("/servers/{server_id}/update-server")
+async def update_server_details(
     server_id: str,
     body: MediaUrlUpdate,
     redis: Redis = Depends(get_redis_client),
@@ -317,7 +355,21 @@ async def update_media_url(
 ):
     server, owner = await _get_owned_server(db, server_id, body.email)
 
-    if body.media_url is None and body.server_url is None and body.new_email is None:
+    settings = {
+        "media_url",
+        "server_url",
+        "new_email",
+        "serverName",
+        "about",
+        "categories",
+        "maxPayload",
+        "colour",
+        "annotated",
+        "disabled",
+        "location",
+        "serverType",
+    }
+    if not body.model_fields_set.intersection(settings):
         raise HTTPException(status_code=400, detail="No server settings to update")
     if body.media_url is not None:
         if not server.get("media"):
@@ -331,6 +383,22 @@ async def update_media_url(
         server["media"] = media
     if body.server_url is not None:
         server["serverUrl"] = body.server_url
+
+    editable_fields = {
+        "serverName",
+        "about",
+        "categories",
+        "maxPayload",
+        "colour",
+        "annotated",
+        "disabled",
+        "location",
+        "serverType",
+    }
+    updates = body.model_dump(mode="json", exclude_unset=True)
+    for field in editable_fields.intersection(body.model_fields_set):
+        server[field] = updates[field]
+
     if body.new_email is not None:
         owner["email_hash"] = hash_email(body.new_email)
         if not owner.get("ephemeral"):
@@ -338,6 +406,7 @@ async def update_media_url(
 
     await save_server(db, server)
     await save_owner(db, owner)
+    await redis.delete(OPEN_SERVERS_CACHE_KEY)
 
     return {
         "message": "Server settings updated",
@@ -345,6 +414,7 @@ async def update_media_url(
         "media_url": server.get("media", {}).get("url"),
         "server_url": server.get("serverUrl"),
         "email": body.new_email,
+        **{field: server.get(field) for field in editable_fields},
     }
 
 
@@ -383,4 +453,3 @@ async def exchange_servers(
     # The client app is to use the very first server it has in common with the other user to send the message. 
     else: 
         return Servers(server_ids=[])
-
