@@ -114,7 +114,7 @@ async def forgot_password(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="if this phone number is registered, an sms will be sent to you")
         # Make otp and send it
         otp = random.randint(100000, 999999)
-        await redis.set(f"phone_recovery_otp_{user.phone_number}", otp, ex=600)  # 600 seconds = 10 minutes    
+        await redis.set(f"phone_recovery_otp_{phone_number}", otp, ex=600)
          
         # Send to appropriate service to send the pin to the user via SMS or other means
         await send_otp_sms(phone_number=phone_number, otp=str(otp))
@@ -122,6 +122,12 @@ async def forgot_password(
         return {"message": "An otp has been sent to your phone number do it in 10 minutes or it will be deleted"} 
 
     elif user.phone_number and user.pin:
+        if not user.password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="A new password is required to complete the reset",
+            )
+
         # Check if the pin is correct
         phone_number = normalize_phone_number(user.phone_number)
         otp = await redis.get(f"phone_recovery_otp_{phone_number}")
@@ -133,9 +139,15 @@ async def forgot_password(
         user_doc = await get_user_by_phone(db, phone_number)
         if not user_doc:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-        # Now send the users encrypted blob so they figure out themselves
-        document = user_doc.get("encrypted_blob")
-        return {"message": document}
+
+        new_salt, new_password_hash = hash_password(user.password)
+        user_doc["salt"] = new_salt
+        user_doc["password"] = new_password_hash
+        user_doc["encrypted_blob"] = None
+        await save_user(db, user_doc)
+        await redis.delete(f"phone_recovery_otp_{phone_number}")
+
+        return {"message": "Password reset successfully"}
 
     else:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -579,4 +591,3 @@ async def edit_my_phone_number(
                 else "Phone updated successfully"
             )
         }
-
