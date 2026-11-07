@@ -45,7 +45,7 @@ async def create_new_user_preprocess(
     if await phone_exists(db, phone_number):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Not allowed")
     # Lets do exponential backoff for this using redis so the user does not waste our sms.
-    check_phone_block = True #await exponential_backoff(redis, phone_number)
+    check_phone_block = await exponential_backoff(redis, phone_number)
     if check_phone_block:
         pin = random.randint(100000, 999999)  # Generate a 6-digit pin
 
