@@ -84,6 +84,33 @@ class DhDropORM(Base):
         }
 
 
+class BroadcastKeyORM(Base):
+    """The latest publicly discoverable key for a user."""
+
+    __tablename__ = "broadcast_keys"
+
+    user_id = Column(String, primary_key=True, index=True)
+    public_key = Column(String, nullable=False)
+
+
+async def save_broadcast_key(db: AsyncSession, user_id: str, public_key: str) -> None:
+    row = await db.get(BroadcastKeyORM, user_id)
+    if row is None:
+        db.add(BroadcastKeyORM(user_id=user_id, public_key=public_key))
+    else:
+        row.public_key = public_key
+    await db.commit()
+
+
+async def get_broadcast_keys(db: AsyncSession, user_ids: list[str]) -> dict[str, str]:
+    rows = (
+        await db.scalars(
+            select(BroadcastKeyORM).where(BroadcastKeyORM.user_id.in_(user_ids))
+        )
+    ).all()
+    return {row.user_id: row.public_key for row in rows}
+
+
 def _expiry(expires_in: int) -> int:
     return int(time.time() + int(expires_in))
 

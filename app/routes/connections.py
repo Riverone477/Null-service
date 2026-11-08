@@ -17,6 +17,8 @@ from app.models.connections import (
     save_dh_drop,
     pop_dh_drops,
     clear_dh_drops,
+    save_broadcast_key,
+    get_broadcast_keys,
 )
 from redis.asyncio import Redis
 
@@ -384,3 +386,42 @@ async def get_sub_categories(
 ):
     
     return sub_cat
+
+
+class PublicKey(BaseModel):
+    public_key: str = Field(..., max_length=50)
+
+@router.post("/broadcast-key")
+async def broadcast_my_key(
+    payload: PublicKey,
+    user: dict = Depends(require_jwe_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Publish or replace the authenticated user's public key."""
+    user_id = user.get("sub")
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
+
+    await save_broadcast_key(db, user_id, payload.public_key)
+    return {"message": "Public key broadcasted successfully"}
+
+class UserId(BaseModel):
+    user_id: str = Field(..., max_length=50)
+class UserIds(BaseModel):
+    user_ids: List[UserId] = Field(..., max_length =500)
+
+@router.post("/get-broadcasted-key")
+async def get_broadcasted_key(
+    payload: UserIds,
+    user: dict = Depends(require_jwe_auth),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return published keys for the requested user ids."""
+    keys = await get_broadcast_keys(db, payload.user_ids)
+    return {
+        "public_keys": [
+            {"user_id": user_id, "public_key": keys.get(user_id)}
+            for user_id in payload.user_ids
+        ]
+    }
+
