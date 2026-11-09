@@ -145,7 +145,7 @@ All routes are mounted under `/api`. Most require a Bearer access token
 | POST | `/api/servers/{server_id}/media-url/otp` | Send an OTP to the owner's email and return public server details (no owner email or phone). |
 | POST | `/api/servers/{server_id}/update-server` | Update media URL, server URL, owner email, server metadata, or the server's `public_key`; returns NULL's `server_public_key` and an Ed25519-signed token. |
 | POST | `/api/servers/link/challenge` | Create a short-lived challenge for a registered server to sign using its Ed25519 private key. |
-| POST | `/api/servers/link` | Verify a server's signed challenge and create an 8-character link token for the peer (available to that peer for 24 hours); omit `connect_server_id` to retrieve a pending token. |
+| POST | `/api/servers/link` | Verify a server's signed challenge and create an 8-character link token for the peer (available to that peer for 24 hours); returns the peer's `server_url`. Omit `connect_server_id` to retrieve a pending token. |
 | POST | `/api/add-servers` | Add server ids to the caller's membership list. |
 | POST | `/api/exchange-servers` | Read another user's membership list. |
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import secrets, nanoid, hmac, hashlib, colorsys
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -46,8 +45,6 @@ router = LoggedAPIRouter(prefix="", tags=["servers"])
 OTP_TTL = 300  # 5 minutes
 MAX_OTP_ATTEMPTS = 2
 SERVER_ID_LEN = 12
-OPEN_SERVERS_CACHE_KEY = "servers:open"
-OPEN_SERVERS_CACHE_TTL = 24 * 60 * 60
 SERVER_CHALLENGE_TTL = 5 * 60
 SERVER_LINK_TOKEN_TTL = 24 * 60 * 60
 
@@ -151,27 +148,6 @@ async def get_servers(
             continue  # skip malformed records instead of failing the whole list
     return {"servers": servers}
 
-
-@router.get("/servers-open")
-async def get_servers_open(
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis_client),
-):
-    cached_servers = await redis.get(OPEN_SERVERS_CACHE_KEY)
-    if cached_servers is not None:
-        return json.loads(_as_str(cached_servers))
-
-    servers = [
-        {"server_id": record["serverId"], "server_url": record["serverUrl"]}
-        for record in await list_servers(db)
-    ]
-    response = {"servers": servers}
-    await redis.set(
-        OPEN_SERVERS_CACHE_KEY,
-        json.dumps(response),
-        ex=OPEN_SERVERS_CACHE_TTL,
-    )
-    return response
 
 # ============================================================
 # Register: step 1 (request OTP)
@@ -425,7 +401,6 @@ async def update_server_details(
 
     await save_server(db, server)
     await save_owner(db, owner)
-    await redis.delete(OPEN_SERVERS_CACHE_KEY)
 
     return {
         "message": "Server settings updated",
@@ -550,5 +525,6 @@ async def link_servers(
         "message": "Server link token created",
         "server_id": body.server_id,
         "connect_server_id": body.connect_server_id,
+        "server_url": peer_server["serverUrl"],
         "token": token,
     }

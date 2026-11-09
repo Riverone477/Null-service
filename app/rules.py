@@ -25,7 +25,6 @@ rules = {
     "/api/broadcast-key": "20-1_60-5",
     "/api/get-broadcasted-key": "20-1_60-5",
     "/api/servers": "30-1_100-5",
-    "/api/servers-open": "30-1_100-5",
     "/api/register-server-pre": "3-1_5-5_10-30",
     "/api/register-server-post": "5-1_10-5_20-15",
     "/api/servers/{server_id}/media-url/otp": "3-1_5-5_10-30",
