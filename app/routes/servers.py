@@ -17,7 +17,7 @@ from app.utils.auth import (
 from app.utils.config import settings
 from app.utils._redis import get_redis_client
 from app.utils.db import get_db
-from app.utils.limiter import is_allowed, get_client_ip
+from app.utils.limiter import exponential_backoff, is_allowed, get_client_ip
 from app.utils.logger import LoggedAPIRouterMixin
 from app.models.server import (
     Server,
@@ -416,26 +416,18 @@ async def update_server_details(
 
 
 
+async def move_servers_to_redis(db: AsyncSession, redis: Redis) -> None:
+    """Copy all server IDs from the database to Redis for faster lookups."""
+    servers = await list_servers(db)
+    server_ids = [server["serverId"] for server in servers]
+    if server_ids:
+        await redis.delete("server_ids")  # clear existing set
+        await redis.sadd("server_ids", *server_ids)
+        await redis.set("server_ids_last_update", str(int(time.time())))
 
   
-class Servers(BaseModel):
-    server_ids: List[str] = Field(..., description="List of server ids", max_length=500)
-@router.post("/add-servers")
-async def exchange_servers_add(
-    servers: Servers,
-    user: dict = Depends(require_jwe_auth), 
-    redis: Redis = Depends(get_redis_client)
-):
-    # save the servers list to redis
-    await redis.sadd(f"servers:{user['user_id']}", *servers.server_ids)
-
-    return {
-        "message": "Servers saved successfully"
-    }
-
-
 class ServerLinkChallengeRequest(BaseModel):
-    server_id: str = Field(..., min_length=1, max_length=50)
+    server_id: str = Field(..., max_length=9)
 
 
 @router.post("/servers/link/challenge")
@@ -444,23 +436,41 @@ async def create_server_link_challenge(
     redis: Redis = Depends(get_redis_client),
     db: AsyncSession = Depends(get_db),
 ):
-    server = await get_server(db, body.server_id)
-    if server is None:
-        raise HTTPException(status_code=404, detail="Server not found")
-    if not server.get("public_key"):
-        raise HTTPException(status_code=400, detail="Server has no public key registered")
-
+    #use cheap redis lookup first to avoid db hit if server doesn't exist
+    check = await redis.sismember("server_ids", body.server_id)
+    if not check:
+        # First check when last server_ids was updated, if it's been a while, refresh the list from the db so you are looking for a ttl 1 hour
+        last_update = await redis.get("server_ids_last_update")
+        if not last_update:
+            # Go to db and copy server ids to redis for future lookups but then 
+            await move_servers_to_redis(db, redis)
+            # check again
+            check = await redis.sismember("server_ids", body.server_id)
+            if not check:
+                raise HTTPException(status_code=404, detail="Server not found")
+                
     challenge = secrets.token_urlsafe(32)
+    access_token = secrets.token_urlsafe(32)
     await redis.set(
         f"server_link_challenge:{body.server_id}",
         challenge,
         ex=SERVER_CHALLENGE_TTL,
     )
-    return {"server_id": body.server_id, "challenge": challenge}
+    await redis.set(
+        f"server_link_access:{body.server_id}",
+        access_token,
+        ex=SERVER_CHALLENGE_TTL,
+    )
+    return {
+        "server_id": body.server_id,
+        "challenge": challenge,
+        "access_token": access_token,
+    }
 
 
 class ServerLinkRequest(BaseModel):
     server_id: str = Field(..., min_length=1, max_length=50)
+    access_token: Optional[str] = Field(None, min_length=1, max_length=128)
     challenge_result: Optional[str] = Field(
         None, min_length=128, max_length=128, pattern=r"^[0-9a-fA-F]{128}$"
     )
@@ -470,6 +480,7 @@ class ServerLinkRequest(BaseModel):
 @router.post("/servers/link")
 async def link_servers(
     body: ServerLinkRequest,
+    request: Request,
     redis: Redis = Depends(get_redis_client),
     db: AsyncSession = Depends(get_db),
 ):
@@ -477,7 +488,35 @@ async def link_servers(
         token = _as_str(await redis.get(f"server_link_token:{body.server_id}"))
         if token is None:
             raise HTTPException(status_code=404, detail="No link token found")
-        return {"server_id": body.server_id, "token": token}
+        server = await get_server(db, body.server_id)
+        if server is None:
+            raise HTTPException(status_code=404, detail="Server not found")
+        public_key = server.get("public_key")
+        if not public_key:
+            raise HTTPException(status_code=400, detail="Server has no public key registered")
+        return {
+            "server_id": body.server_id,
+            "token": token,
+            "public_key": public_key,
+        }
+
+    client_ip = get_client_ip(request)
+
+    access_key = f"server_link_access:{body.server_id}"
+    consumed = 0
+    if body.access_token is not None:
+        consumed = await redis.eval(
+            "if redis.call('GET', KEYS[1]) == ARGV[1] then "
+            "return redis.call('DEL', KEYS[1]) else return 0 end",
+            1,
+            access_key,
+            body.access_token,
+        )
+    if not consumed:
+        await exponential_backoff(redis, client_ip)
+        raise HTTPException(status_code=401, detail="Invalid or expired access token")
+
+    await redis.delete(f"backoff:{client_ip}")
 
     if body.connect_server_id == body.server_id:
         raise HTTPException(status_code=400, detail="A server cannot link to itself")
