@@ -167,6 +167,13 @@ def load_public_key():
     )
 
 
+def get_server_public_key() -> str:
+    return load_public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("utf-8")
+
+
 def sign_user_id(user_id):
     """Sign a user_id string with the server's private key."""
     if isinstance(user_id, str):
