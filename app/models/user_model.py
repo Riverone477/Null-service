@@ -196,6 +196,7 @@ class ForgotPassword(BaseModel):
     user_id:Optional[str] = Field(default=None, min_length=32, max_length=36)
     phone_number: Optional[str] = Field(default=None, min_length=10, max_length=15)
     pin: Optional[str] = Field (default=None, min_length=6, max_length=6)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=20)
 
 
 class SignInReturn(BaseModel):
