@@ -36,8 +36,8 @@ uvicorn app.main:app --reload
 - Health/root: `GET /`
 
 Tables are created automatically on startup (`init_db()` in the startup event).
-There is no migration framework wired in yet (Alembic is installed but unused) —
-schema changes to existing tables need manual handling or a migration.
+There is no migration framework wired in yet (Alembic is installed but unused);
+the `servers.public_key` column is added idempotently at startup.
 
 ## Configuration
 
@@ -73,7 +73,7 @@ Durable records (SQL):
 | Table | Model | Contents |
 | --- | --- | --- |
 | `users` | `UserORM` | Account: phone, salt, scrypt password hash, recovery type, push tokens, blobs. `phone_number` is unique. |
-| `servers` | `ServerORM` | **Public** server record only: url/name/type, media, colour, about, categories, flags, location. Contains **no owner data**. |
+| `servers` | `ServerORM` | **Public** server record only: url/name/type, public key, media, colour, about, categories, flags, location. Contains **no owner data**. |
 | `server_owners` | `ServerOwnerORM` | Owner identity for a server, joined by `server_id` (FK, `ON DELETE CASCADE`). `phone_hash` is unique (registration dedup); `email_hash` authorises ownership. Plaintext `phone`/`email` are stored only when the server is not `ephemeral`. |
 | `user_servers` | `UserServerORM` | Per-account server membership list (`user_id`, `server_id`). |
 | `contact_drops` | `ContactDropORM` | Contacts dropped into a recipient's inbox. Unique on `(recipient_id, sender_id)`; rows carry `expires_at`. |
@@ -143,7 +143,9 @@ All routes are mounted under `/api`. Most require a Bearer access token
 | POST | `/api/register-server-pre` | Send a registration OTP. |
 | POST | `/api/register-server-post` | Verify OTP and register (creates server + owner). |
 | POST | `/api/servers/{server_id}/media-url/otp` | Send an OTP to the owner's email and return public server details (no owner email or phone). |
-| POST | `/api/servers/{server_id}/media-url` | Update media URL, server URL, owner email, or server metadata (`serverName`, `about`, `categories`, `maxPayload`, `colour`, `annotated`, `disabled`, `location`, `serverType`). |
+| POST | `/api/servers/{server_id}/update-server` | Update media URL, server URL, owner email, server metadata, or the server's `public_key`; returns NULL's `server_public_key` and an Ed25519-signed token. |
+| POST | `/api/servers/link/challenge` | Create a short-lived challenge for a registered server to sign using its Ed25519 private key. |
+| POST | `/api/servers/link` | Verify a server's signed challenge and create an 8-character link token for the peer (available to that peer for 24 hours); omit `connect_server_id` to retrieve a pending token. |
 | POST | `/api/add-servers` | Add server ids to the caller's membership list. |
 | POST | `/api/exchange-servers` | Read another user's membership list. |
 

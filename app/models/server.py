@@ -40,6 +40,7 @@ class Server(BaseModel):
     serverId: str
     serverUrl: str
     serverName: str
+    public_key: Optional[str] = None
     media: Optional[Media] = None
     maxPayload: int  # This is the maximum text length allowed for a message going to posts
     colour: str
@@ -107,6 +108,7 @@ class ServerORM(Base):
     serverUrl = Column(String, index=True, nullable=False)
     serverName = Column(String, nullable=False)
     serverType = Column(String, nullable=False)
+    public_key = Column(String, nullable=True)
     maxPayload = Column(Integer, nullable=False)
     media = Column(JSON, nullable=True)
     colour = Column(String, nullable=True)
@@ -122,6 +124,7 @@ class ServerORM(Base):
             "serverUrl": self.serverUrl,
             "serverName": self.serverName,
             "serverType": self.serverType,
+            "public_key": self.public_key,
             "maxPayload": self.maxPayload,
             "media": self.media,
             "colour": self.colour,
@@ -193,6 +196,7 @@ def _server_kwargs(record: dict) -> dict:
         "serverUrl": record.get("serverUrl"),
         "serverName": record.get("serverName"),
         "serverType": _enum_value(record.get("serverType")),
+        "public_key": record.get("public_key"),
         "maxPayload": record.get("maxPayload"),
         "media": record.get("media"),
         "colour": record.get("colour"),

@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from fastapi import HTTPException, Request, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwcrypto import jwe, jwk
@@ -68,6 +69,58 @@ def verify_passport(passport: str) -> dict:
         raise ValueError("passport expired")
 
     return payload
+
+
+def create_server_key_token(
+    server_id: str,
+    server_url: str,
+    server_public_key: str,
+
+) -> str:
+    now = int(time.time())
+    payload = {
+        "iss": "NULL",
+        "sub": server_id,
+        "server_id": server_id,
+        "server_url": server_url,
+        "server_public_key": server_public_key,
+        "iat": now,
+        "type": "server_key",
+    }
+    return jwt.encode(payload, load_private_key(), algorithm="EdDSA")
+
+
+def verify_server_challenge(
+    public_key: str,
+    challenge: str,
+    signature_hex: str,
+) -> bool:
+    try:
+        if public_key.startswith("-----BEGIN"):
+            key = serialization.load_pem_public_key(public_key.encode("utf-8"))
+        else:
+            try:
+                raw_key = bytes.fromhex(public_key)
+            except ValueError:
+                raw_key = base64.b64decode(
+                    public_key + "=" * (-len(public_key) % 4),
+                    altchars=b"-_",
+                    validate=True,
+                )
+            key = Ed25519PublicKey.from_public_bytes(raw_key)
+
+        if not isinstance(key, Ed25519PublicKey):
+            raise ValueError("Server public key must be Ed25519")
+        signature = bytes.fromhex(signature_hex)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Invalid stored server public key or signature encoding") from exc
+
+    try:
+        key.verify(signature, challenge.encode("utf-8"))
+    except InvalidSignature:
+        return False
+    return True
+
 
 bearer_scheme = HTTPBearer(auto_error=False)
 

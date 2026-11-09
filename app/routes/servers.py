@@ -9,7 +9,12 @@ from redis.asyncio import Redis
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.utils.auth import require_jwe_auth
+from app.utils.auth import (
+    create_server_key_token,
+    get_server_public_key,
+    require_jwe_auth,
+    verify_server_challenge,
+)
 from app.utils.config import settings
 from app.utils._redis import get_redis_client
 from app.utils.db import get_db
@@ -21,6 +26,7 @@ from app.models.server import (
     ServerType,
     list_servers,
     create_server,
+    get_server,
     save_server,
     save_owner,
     phone_registered,
@@ -42,6 +48,8 @@ MAX_OTP_ATTEMPTS = 2
 SERVER_ID_LEN = 12
 OPEN_SERVERS_CACHE_KEY = "servers:open"
 OPEN_SERVERS_CACHE_TTL = 24 * 60 * 60
+SERVER_CHALLENGE_TTL = 5 * 60
+SERVER_LINK_TOKEN_TTL = 24 * 60 * 60
 
 
 # ============================================================
@@ -276,6 +284,7 @@ class MediaUrlUpdate(BaseModel):
     email: EmailStr
     new_email: Optional[EmailStr] = None
     otp: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+    public_key: Optional[str] = Field(None, min_length=20, max_length=128)
     media_url: Optional[str] = Field(None, max_length=150, pattern=r"^https?://\S+$")
     server_url: Optional[str] = Field(None, max_length=150)
     serverName: Optional[str] = Field(None, max_length=100)
@@ -301,6 +310,7 @@ class MediaUrlUpdate(BaseModel):
             "disabled",
             "location",
             "serverType",
+            "public_key",
         }
         for field in settings - nullable_settings:
             if field in self.model_fields_set and getattr(self, field) is None:
@@ -368,6 +378,7 @@ async def update_server_details(
         "disabled",
         "location",
         "serverType",
+        "public_key",
     }
     if not body.model_fields_set.intersection(settings):
         raise HTTPException(status_code=400, detail="No server settings to update")
@@ -394,6 +405,7 @@ async def update_server_details(
         "disabled",
         "location",
         "serverType",
+        "public_key",
     }
     updates = body.model_dump(mode="json", exclude_unset=True)
     for field in editable_fields.intersection(body.model_fields_set):
@@ -404,6 +416,13 @@ async def update_server_details(
         if not owner.get("ephemeral"):
             owner["email"] = str(body.new_email)
 
+    server_public_key = get_server_public_key()
+    token = create_server_key_token(
+        server_id,
+        server.get("serverUrl"),
+        server.get("public_key"),
+    )
+
     await save_server(db, server)
     await save_owner(db, owner)
     await redis.delete(OPEN_SERVERS_CACHE_KEY)
@@ -413,6 +432,9 @@ async def update_server_details(
         "serverId": server_id,
         "media_url": server.get("media", {}).get("url"),
         "server_url": server.get("serverUrl"),
+        "public_key": server.get("public_key"),
+        "server_public_key": server_public_key,
+        "token": token,
         "email": body.new_email,
         **{field: server.get(field) for field in editable_fields},
     }
@@ -436,20 +458,97 @@ async def exchange_servers_add(
         "message": "Servers saved successfully"
     }
 
-    
 
-class ConfirmServers(BaseModel):
-    user_id: str = Field(..., description="User id", max_length=40)
-@router.post("/exchange-servers", response_model=Servers)
-async def exchange_servers(
-    servers: ConfirmServers,
-    user: dict = Depends(require_jwe_auth), 
-    redis: Redis = Depends(get_redis_client)
+class ServerLinkChallengeRequest(BaseModel):
+    server_id: str = Field(..., min_length=1, max_length=50)
+
+
+@router.post("/servers/link/challenge")
+async def create_server_link_challenge(
+    body: ServerLinkChallengeRequest,
+    redis: Redis = Depends(get_redis_client),
+    db: AsyncSession = Depends(get_db),
 ):
-    # get the servers list from redis
-    servers_list = await redis.smembers(f"servers:{servers.user_id}")
-    if servers_list:
-        return Servers(server_ids=list(servers_list))
-    # The client app is to use the very first server it has in common with the other user to send the message. 
-    else: 
-        return Servers(server_ids=[])
+    server = await get_server(db, body.server_id)
+    if server is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not server.get("public_key"):
+        raise HTTPException(status_code=400, detail="Server has no public key registered")
+
+    challenge = secrets.token_urlsafe(32)
+    await redis.set(
+        f"server_link_challenge:{body.server_id}",
+        challenge,
+        ex=SERVER_CHALLENGE_TTL,
+    )
+    return {"server_id": body.server_id, "challenge": challenge}
+
+
+class ServerLinkRequest(BaseModel):
+    server_id: str = Field(..., min_length=1, max_length=50)
+    challenge_result: Optional[str] = Field(
+        None, min_length=128, max_length=128, pattern=r"^[0-9a-fA-F]{128}$"
+    )
+    connect_server_id: Optional[str] = Field(None, min_length=1, max_length=50)
+
+
+@router.post("/servers/link")
+async def link_servers(
+    body: ServerLinkRequest,
+    redis: Redis = Depends(get_redis_client),
+    db: AsyncSession = Depends(get_db),
+):
+    if body.connect_server_id is None:
+        token = _as_str(await redis.get(f"server_link_token:{body.server_id}"))
+        if token is None:
+            raise HTTPException(status_code=404, detail="No link token found")
+        return {"server_id": body.server_id, "token": token}
+
+    if body.connect_server_id == body.server_id:
+        raise HTTPException(status_code=400, detail="A server cannot link to itself")
+
+    server = await get_server(db, body.server_id)
+    if server is None:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not server.get("public_key"):
+        raise HTTPException(status_code=400, detail="Server has no public key registered")
+
+    peer_server = await get_server(db, body.connect_server_id)
+    if peer_server is None:
+        raise HTTPException(status_code=404, detail="Server to connect with not found")
+    if body.challenge_result is None:
+        raise HTTPException(status_code=422, detail="Challenge result is required")
+
+    challenge = _as_str(
+        await redis.getdel(f"server_link_challenge:{body.server_id}")
+    )
+    if challenge is None:
+        raise HTTPException(status_code=401, detail="Challenge missing or expired")
+
+    try:
+        valid = verify_server_challenge(
+            server["public_key"],
+            challenge,
+            body.challenge_result,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Registered server public key is invalid",
+        ) from exc
+    if not valid:
+        raise HTTPException(status_code=401, detail="Invalid challenge result")
+
+    alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    token = "".join(secrets.choice(alphabet) for _ in range(8))
+    await redis.set(
+        f"server_link_token:{body.connect_server_id}",
+        token,
+        ex=SERVER_LINK_TOKEN_TTL,
+    )
+    return {
+        "message": "Server link token created",
+        "server_id": body.server_id,
+        "connect_server_id": body.connect_server_id,
+        "token": token,
+    }
