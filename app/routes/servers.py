@@ -422,7 +422,7 @@ async def update_server_details(
 
   
 class Servers(BaseModel):
-    server_ids: list[str] = Field(..., description="List of server ids", max_length=500)
+    server_ids: List[str] = Field(..., description="List of server ids", max_length=500)
 @router.post("/add-servers")
 async def exchange_servers_add(
     servers: Servers,
