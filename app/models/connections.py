@@ -64,7 +64,6 @@ class DhDropORM(Base):
     recipient_id = Column(String, index=True, nullable=False)
     sender_id = Column(String, nullable=False)
     dh_enc_key = Column(String, nullable=False)
-    dh_enc_nonce = Column(String, nullable=False)
     servers = Column(JSON, nullable=True)
     date_created = Column(Integer, nullable=False, default=lambda: int(time.time()))
     expires_at = Column(Integer, nullable=False)
@@ -79,7 +78,6 @@ class DhDropORM(Base):
         return {
             "sender_id": self.sender_id,
             "dh_enc_key": self.dh_enc_key,
-            "dh_enc_nonce": self.dh_enc_nonce,
             "servers": list(self.servers) if self.servers else self.servers,
         }
 
@@ -189,7 +187,6 @@ async def save_dh_drop(
             recipient_id=recipient_id,
             sender_id=sender_id,
             dh_enc_key=dh_doc["dh_enc_key"],
-            dh_enc_nonce=dh_doc["dh_enc_nonce"],
             servers=dh_doc.get("servers"),
             expires_at=_expiry(expires_in),
         )

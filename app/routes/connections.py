@@ -295,7 +295,6 @@ async def check_contact(
 class DHDrop(BaseModel):
     recipient_id: str = Field(..., description="The recipient's user id", max_length=40)
     dh_enc_key: str = Field(..., description="The recipient's public dh key, encrypted with the sender's public dh key", max_length=1000)
-    dh_enc_nonce: str = Field(..., description="The nonce used to encrypt the dh key", max_length=40)
     expires_in: int = Field(
         DH_DROP_EXPIRY_SECONDS,
         ge=MIN_EXPIRY_SECONDS,
@@ -330,7 +329,6 @@ async def dh_drop(
 
     dh_data = {
         "dh_enc_key": dhd.dh_enc_key,
-        "dh_enc_nonce": dhd.dh_enc_nonce,
         "servers": [s.model_dump() for s in dhd.servers],
     }
 
