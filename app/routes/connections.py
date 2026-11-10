@@ -47,15 +47,7 @@ class Contact(BaseModel):
     title: str = Field(..., description="The title of the contact", max_length=100)
     bio: str = Field(..., description="The bio of the contact", max_length=500)
     public_key: str = Field(..., description="The Ed25519 identity public key of the contact", max_length=128)
-    dh_public_key: Optional[str] = Field(
-        None,
-        description=(
-            "The contact's X25519 (Diffie-Hellman) public key, urlsafe base64. "
-            "Needed to seal a dh key to them via /dh-drop. Omit if unknown."
-        ),
-        max_length=128,
-    )
-    avatar: Optional[str] = Field(None, description="The avatar of the contact", max_length=29000)
+    avatar: Optional[str] = Field(None, description="The avatar of the contact", max_length=1000)
     servers: Optional[List[ServerClass]] = Field(None, description="The servers the contact is attached to")
     
 
@@ -407,8 +399,11 @@ async def broadcast_my_key(
 
 class UserId(BaseModel):
     user_id: str = Field(..., max_length=50)
+
+
 class UserIds(BaseModel):
-    user_ids: List[UserId] = Field(..., max_length =500)
+    user_ids: List[str | UserId] = Field(..., max_length=500)
+
 
 @router.post("/get-broadcasted-key")
 async def get_broadcasted_key(
@@ -417,11 +412,15 @@ async def get_broadcasted_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Return published keys for the requested user ids."""
-    keys = await get_broadcast_keys(db, payload.user_ids)
+    requested_ids = [
+        item.user_id if isinstance(item, UserId) else str(item)
+        for item in payload.user_ids
+    ]
+    keys = await get_broadcast_keys(db, requested_ids)
     return {
         "public_keys": [
             {"user_id": user_id, "public_key": keys.get(user_id)}
-            for user_id in payload.user_ids
+            for user_id in requested_ids
         ]
     }
 
